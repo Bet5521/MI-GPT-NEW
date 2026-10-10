@@ -16,6 +16,7 @@ const ENV_FILE = path.join(APP_DIR, ".env");
 // speaker.passToken 不会透传，所以必须直接写这个文件才能免密/跳过风控。
 const MI_JSON = path.join(APP_DIR, ".mi.json");
 const MI_JSON_BAK = path.join(CONFIG_DIR, ".mi.json"); // 落到已挂载的 /app/config，容器重建不丢
+const AUTOSTART_FILE = path.join(CONFIG_DIR, ".autostart"); // 开机自启持久化标记（落到已挂载 /app/config，容器重建不丢）
 const UI_LOG_DIR = process.env.MIGPT_LOG_DIR || "/tmp";
 const LOG_DIR = path.join(APP_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "migpt.log");
@@ -168,6 +169,21 @@ function writeMiJson(token) {
     fs.writeFileSync(MI_JSON_BAK, text); // 同步一份到挂载卷，防止容器重建丢失
   } catch {}
   return merged;
+}
+
+// ---------- 开机自启开关 ----------
+// 持久化到 /app/config/.autostart（1=开启，0=关闭）；文件不存在时退回环境变量 MIGPT_AUTOSTART
+function readAutostart() {
+  try {
+    return fs.readFileSync(AUTOSTART_FILE, "utf8").trim() === "1";
+  } catch {
+    return process.env.MIGPT_AUTOSTART === "1";
+  }
+}
+function writeAutostart(on) {
+  ensureDirs();
+  fs.writeFileSync(AUTOSTART_FILE, (on ? "1" : "0") + "\n");
+  return on;
 }
 
 // ---------- 进程管理 ----------
@@ -373,6 +389,7 @@ const server = http.createServer(async (req, res) => {
         authEnabled: !!(AUTH_USER && AUTH_PASS),
         port: PORT,
         mi: miJsonStatus(),
+        autostart: readAutostart(),
       });
     }
 
@@ -418,6 +435,19 @@ const server = http.createServer(async (req, res) => {
       stopMiGpt();
       await new Promise((r) => setTimeout(r, 1200));
       return send(res, 200, startMiGpt());
+    }
+
+    // 开关开机自启（body: { enabled: boolean }），持久化到 /app/config/.autostart
+    if (url.pathname === "/api/autostart" && req.method === "POST") {
+      const text = await readBody(req);
+      const body = text ? JSON.parse(text) : {};
+      const on = !!body.enabled;
+      writeAutostart(on);
+      return send(res, 200, {
+        ok: true,
+        enabled: on,
+        msg: on ? "已开启开机自启（容器重启后自动拉起 MiGPT）" : "已关闭开机自启",
+      });
     }
 
     if (url.pathname === "/api/logs") {

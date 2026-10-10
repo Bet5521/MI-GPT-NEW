@@ -39,6 +39,18 @@
   button:hover { border-color: var(--accent); color: #fff; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.danger:hover { border-color: var(--err); color: var(--err); }
+  button:disabled { opacity: .42; cursor: not-allowed; background: var(--panel2); border-color: var(--line); color: var(--muted); }
+  button.primary:disabled { background: var(--panel2); border-color: var(--line); color: var(--muted); }
+  button.danger:disabled { background: var(--panel2); border-color: var(--line); color: var(--muted); }
+  button:disabled:hover { border-color: var(--line); color: var(--muted); }
+  /* 开机自启开关 */
+  .switch { position: relative; display: inline-block; width: 40px; height: 22px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: var(--line); border-radius: 22px; transition: .2s; }
+  .switch .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .switch input:checked + .slider { background: var(--ok); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
+  .auto-label { color: var(--muted); font-size: 13px; margin: 0 4px 0 2px; }
   main { max-width: 1100px; margin: 0 auto; padding: 18px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
   .tab {
@@ -89,6 +101,10 @@
 <header>
   <h1>MiGPT 控制台</h1>
   <span class="status"><span id="dot" class="dot"></span><span id="statusText">加载中…</span></span>
+  <span class="status" style="margin-left:10px">
+    <label class="switch" title="容器重启后是否自动拉起 MiGPT"><input type="checkbox" id="autoStart"><span class="slider"></span></label>
+    <span class="auto-label">开机自启</span>
+  </span>
   <span class="spacer"></span>
   <button id="btnStart" class="primary">启动 MiGPT</button>
   <button id="btnStop" class="danger">停止</button>
@@ -477,6 +493,17 @@ async function loadStatus() {
   $("statusText").textContent = s.running
     ? `运行中 · pid ${s.pid} · ${s.uptime}s`
     : "未运行 · 控制台端口 " + s.port + (s.authEnabled ? " · 已启用认证" : "");
+  setProcessButtons(s.running);
+  $("autoStart").checked = !!s.autostart;
+}
+
+// 按钮状态跟随 MiGPT 实际运行状态：
+// 运行中 → 启动禁用（灰），停止/重启可用（亮）；未运行 → 启动可用（亮），停止/重启禁用（灰）
+function setProcessButtons(running) {
+  $("btnStart").disabled = running;
+  $("btnStop").disabled = !running;
+  $("btnRestart").disabled = !running;
+  $("btnSave").disabled = false; // 保存配置始终可用
 }
 
 async function loadLog() {
@@ -498,6 +525,20 @@ document.querySelectorAll(".tab").forEach((btn) => {
 });
 
 $("btnSave").onclick = () => save().catch(e => toast("保存失败: " + e.message));
+$("autoStart").addEventListener("change", async () => {
+  const enabled = $("autoStart").checked;
+  try {
+    const r = await api("/api/autostart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    toast(r.msg || "已更新开机自启");
+  } catch (e) {
+    $("autoStart").checked = !enabled; // 失败回滚
+    toast("设置失败: " + e.message);
+  }
+});
 $("btnStart").onclick = async () => {
   await save(false).catch(() => {});
   toast((await api("/api/start", { method: "POST" })).msg);

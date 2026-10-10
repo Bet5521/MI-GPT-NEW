@@ -30,7 +30,7 @@
 #### 1. Web 控制台（WebUI）
 内置一个**零依赖**（仅使用 Node.js 内置模块）的 Web 管理界面，默认监听 `6060` 端口（可用环境变量 `MIGPT_UI_PORT` 覆盖）。容器启动后访问 `http://<设备IP>:6060` 即可打开控制台。主要能力：
 
-- **进程管理**：在网页上一键 **启动 / 停止 / 重启** MiGPT 主进程，实时查看运行状态、PID 与运行时长；设置 `MIGPT_AUTOSTART=1` 可在控制台就绪后自动拉起 MiGPT。
+- **进程管理**：在网页上一键 **启动 / 停止 / 重启** MiGPT 主进程，实时查看运行状态、PID 与运行时长；按钮状态**跟随 MiGPT 实际运行状态自动切换**——运行中时「启动」置灰、「停止 / 重启」可点（亮）；未运行时反之。新增 **开机自启开关**（控制台内一键切换），持久化到 `/app/config/.autostart`，容器重启后自动拉起 MiGPT（无需再手动设置 `MIGPT_AUTOSTART` 环境变量）。
 - **配置管理**：
   - 结构化模式：通过表单 / JSON 编辑 `bot`、`master`、`speaker` 等配置；
   - 高级模式：直接编辑 `.migpt.js` 与 `.env`（支持 OpenAI、智谱 GLM、通义千问、MoonShot、DeepSeek 等兼容 OpenAI 的模型）。
@@ -40,7 +40,7 @@
 
 #### 2. ARM32v7（玩客云 / armv7l）构建支持
 - 新增 `Dockerfile.arm`：基于 `debian:bookworm`，从内置的 `node-v20.14.0-linux-armv7l.tar.xz` 解包 Node 20，完成 pnpm 安装、Prisma 生成与 `tsup` 打包，并拷贝 `webui` 与 `entrypoint.sh`，容器入口即为 Web 控制台。
-- 新增 `entrypoint.sh`：容器入口脚本，负责创建 `config` / `logs` 目录、兜底生成 `.migpt.js`、按 `MIGPT_AUTOSTART` 决定是否自启 MiGPT，最后启动 Web 控制台（`node /app/webui/server.js`）。
+- 新增 `entrypoint.sh`：容器入口脚本，负责创建 `config` / `logs` 目录、兜底生成 `.migpt.js`、按 `MIGPT_AUTOSTART` 环境变量或持久化文件 `/app/config/.autostart`（WebUI 开机自启开关写入）决定是否自启 MiGPT，最后启动 Web 控制台（`node /app/webui/server.js`）。
 - `.dockerignore` 增加构建产物白名单、`Dockerfile` 增加 `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1` 以适配 ARM 环境。
 
 ### 🐛 修复与适配

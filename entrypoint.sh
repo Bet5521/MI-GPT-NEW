@@ -14,7 +14,12 @@ export default JSON.parse(
 JSEOF
 fi
 
-if [ "${MIGPT_AUTOSTART:-0}" = "1" ]; then
+# 读取开机自启设置：优先 /app/config/.autostart 持久化文件（WebUI 开关写入），否则看环境变量 MIGPT_AUTOSTART
+AUTOSTART_VAL="${MIGPT_AUTOSTART:-0}"
+if [ -f /app/config/.autostart ]; then
+  AUTOSTART_VAL="$(cat /app/config/.autostart)"
+fi
+if [ "${AUTOSTART_VAL:-0}" = "1" ]; then
   node /app/webui/autostart.js >> /app/logs/webui.log 2>&1 &
 fi
 
