@@ -1,0 +1,30 @@
+FROM library/debian:bookworm AS base
+WORKDIR /app
+ENV npm_config_registry=https://registry.npmmirror.com
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+ENV PRISMA_QUERY_ENGINE_BINARY=/app/prisma/engines/query-engine
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/prisma/engines/libquery_engine.so.node
+ENV PRISMA_SCHEMA_ENGINE_BINARY=/app/prisma/engines/schema-engine
+
+FROM base AS nodeinstall
+COPY node-v20.14.0-linux-armv7l.tar.xz /tmp/
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates xz-utils python3 make g++     && tar -xJf /tmp/node-v20.14.0-linux-armv7l.tar.xz -C /usr/local --strip-components=1     && node -v && npm -v && rm -f /tmp/node-v20.14.0-linux-armv7l.tar.xz
+
+FROM nodeinstall AS build
+COPY . .
+RUN npm install -g pnpm@9.1.1
+RUN pnpm install --production && pnpm prisma generate
+RUN pnpm install && pnpm tsup
+
+FROM nodeinstall AS release
+WORKDIR /app
+COPY app.js .
+COPY package.json .
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules ./node_modules
+COPY webui ./webui
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x /app/prisma/engines/* /app/entrypoint.sh
+EXPOSE 6060
+CMD ["/app/entrypoint.sh"]

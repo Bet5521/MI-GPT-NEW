@@ -9,6 +9,7 @@ ENV PRISMA_SCHEMA_ENGINE_BINARY=/app/prisma/engines/schema-engine
 FROM env-$TARGETARCH as base
 WORKDIR /app
 ARG TARGETARCH
+ENV npm_config_registry=https://registry.npmmirror.com
 
 FROM base as runtime
 COPY . .

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MiGPT 控制台</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --panel2: #23272f;
+    --line: #2f3540;
+    --text: #e6e9ef;
+    --muted: #99a1af;
+    --accent: #4c8dff;
+    --ok: #35c46b;
+    --warn: #f0a33c;
+    --err: #ef5f5f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", Roboto, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { margin: 0; font-size: 17px; letter-spacing: .5px; }
+  .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .spacer { flex: 1; }
+  button {
+    padding: 6px 14px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel2); color: var(--text); cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger:hover { border-color: var(--err); color: var(--err); }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab {
+    padding: 7px 15px; border-radius: 6px 6px 0 0; border: 1px solid var(--line);
+    border-bottom: none; background: transparent; cursor: pointer; color: var(--muted);
+  }
+  .tab.active { background: var(--panel); color: var(--text); border-color: var(--line); }
+  section.page { display: none; }
+  section.page.active { display: block; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h3 { margin: 0 0 12px; font-size: 14px; color: var(--accent); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-family: inherit; font-size: 13px;
+  }
+  textarea { resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .hint { font-size: 11px; color: #7d8797; margin-top: 3px; }
+  .hint code {
+    font-family: ui-monospace, Consolas, monospace; background: #1b2230;
+    padding: 0 3px; border-radius: 3px; color: #9fb0c8;
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  pre.log {
+    background: #0e1013; border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px; max-height: 340px; overflow: auto; margin: 0;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.55;
+    color: #b9c2cf; white-space: pre-wrap; word-break: break-all;
+  }
+  .toast {
+    position: fixed; right: 20px; bottom: 20px; padding: 10px 16px; border-radius: 6px;
+    background: var(--panel2); border: 1px solid var(--accent); opacity: 0; transition: opacity .25s;
+    pointer-events: none; z-index: 20;
+  }
+  .toast.show { opacity: 1; }
+  .mono-note { font-size: 12px; color: var(--warn); }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>MiGPT 控制台</h1>
+  <span class="status"><span id="dot" class="dot"></span><span id="statusText">加载中…</span></span>
+  <span class="spacer"></span>
+  <button id="btnStart" class="primary">启动 MiGPT</button>
+  <button id="btnStop" class="danger">停止</button>
+  <button id="btnRestart">重启</button>
+  <button id="btnSave" class="primary">保存配置</button>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="basic">角色 & 提示词</button>
+    <button class="tab" data-tab="speaker">音箱 & 账号</button>
+    <button class="tab" data-tab="miot">MIoT & 对话</button>
+    <button class="tab" data-tab="llm">大模型 / 环境变量</button>
+    <button class="tab" data-tab="adv">高级</button>
+    <button class="tab" data-tab="log">运行日志</button>
+  </div>
+
+  <!-- 角色 & 提示词 -->
+  <section class="page active" id="page-basic">
+    <div class="card">
+      <h3>角色设定</h3>
+      <div class="grid">
+        <div><label>音箱扮演的角色名</label><input type="text" id="botName" placeholder="傻妞"></div>
+        <div><label>你的名字（主人）</label><input type="text" id="masterName" placeholder="陆小千"></div>
+      </div>
+      <div class="split" style="margin-top:12px">
+        <div><label>角色简介</label><textarea id="botProfile" rows="6"></textarea></div>
+        <div><label>主人简介</label><textarea id="masterProfile" rows="6"></textarea></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>系统 Prompt 模板</h3>
+      <div class="hint" style="margin-bottom:6px">
+        可用变量：{{botName}} {{botProfile}} {{masterName}} {{masterProfile}} {{roomName}}
+        {{roomIntroduction}} {{messages}} {{shortTermMemory}} {{longTermMemory}}。留空则使用 MiGPT 内置默认模板。
+      </div>
+      <textarea id="systemTemplate" rows="10" placeholder="留空使用内置模板"></textarea>
+    </div>
+  </section>
+
+  <!-- 音箱 & 账号 -->
+  <section class="page" id="page-speaker">
+    <div class="card">
+      <h3>小米账号</h3>
+      <div class="grid">
+        <div>
+          <label>小米 ID</label>
+          <input type="text" id="userId" placeholder="987654321">
+          <div class="hint">不是手机号/邮箱，在米家「个人信息」-「小米 ID」查看</div>
+        </div>
+        <div><label>账号密码</label><input type="text" id="password" placeholder="小米账号密码"></div>
+        <div>
+          <label>设备 DID（推荐填数字 miotDID）</label>
+          <input type="text" id="did" placeholder="488043044">
+          <div class="hint">填米家设备名常匹配不上；用数字 miotDID 最稳（开音箱 trace 日志可拿到）</div>
+        </div>
+        <div>
+          <label>passToken（可选，V1: 开头）</label>
+          <input type="text" id="passToken" placeholder="留空则用账号密码登录">
+          <div class="hint">
+            保存后会写入 <code>/app/.mi.json</code> 的 <code>mina.pass.passToken</code> 与
+            <code>miiot.pass.passToken</code>，MiGPT 登录时带它去请求小米 serviceLogin，
+            命中即跳过密码登录和异地安全验证。
+          </div>
+          <div class="hint" id="miJsonState"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>唤醒词 & 提示语（英文逗号分隔）</h3>
+      <div class="grid">
+        <div><label>调用 AI 的关键词</label><input type="text" id="callAIKeywords"></div>
+        <div><label>进入 AI 模式的关键词</label><input type="text" id="wakeUpKeywords"></div>
+        <div><label>退出 AI 模式的关键词</label><input type="text" id="exitKeywords"></div>
+        <div><label>进入 AI 模式提示语</label><input type="text" id="onEnterAI"></div>
+        <div><label>退出 AI 模式提示语</label><input type="text" id="onExitAI"></div>
+        <div><label>AI 思考中提示语</label><input type="text" id="onAIAsking"></div>
+        <div><label>AI 回答完提示语</label><input type="text" id="onAIReplied"></div>
+        <div><label>AI 出错提示语</label><input type="text" id="onAIError"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MIoT & 对话 -->
+  <section class="page" id="page-miot">
+    <div class="card">
+      <h3>MIoT 指令与 TTS</h3>
+      <div class="hint" style="margin-bottom:8px">
+        指令在 https://home.miot-spec.com 查询，格式为 siid,aiid。
+        <b>不同机型不一样</b>：小米 miot spec 里 siid=5 的 <code>Intelligent Speaker</code>，
+        L05C 是 <code>aiid=1 Wake Up</code> / <code>aiid=3 Play Text</code>，而 mi-gpt 默认值恰好是反的
+        —— 填错会导致 <b>TTS 完全没声音</b>。
+      </div>
+      <div class="row" style="margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn" id="btnPresetL05C">套用 Play 增强版(L05C)</button>
+        <button class="btn" id="btnPresetDefault">恢复 mi-gpt 默认</button>
+      </div>
+      <div class="grid">
+        <div><label>TTS 指令 ttsCommand</label><input type="text" id="ttsCommand" placeholder="5,1"><div class="hint">L05C 用 5,3（Play Text）</div></div>
+        <div><label>唤醒指令 wakeUpCommand</label><input type="text" id="wakeUpCommand" placeholder="5,3"><div class="hint">L05C 用 5,1（Wake Up）</div></div>
+        <div><label>播放状态指令 playingCommand（可选）</label><input type="text" id="playingCommand" placeholder="留空使用默认"></div>
+        <div><label>TTS 引擎</label><input type="text" id="tts" placeholder="xiaoai"><div class="hint">xiaoai 或 custom（自定义需配 TTS_BASE_URL）</div></div>
+        <div><label>切换音色关键词</label><input type="text" id="switchSpeakerKeywords" placeholder="留空关闭"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>连续对话</h3>
+      <div class="row" style="margin-bottom:10px">
+        <input type="checkbox" id="streamResponse"><label for="streamResponse" style="margin:0;font-size:13px;color:var(--text)">启用连续对话（部分机型不支持需关闭）</label>
+      </div>
+      <div class="grid">
+        <div><label>无响应多久自动退出（秒）</label><input type="number" id="exitKeepAliveAfter"></div>
+        <div><label>下发 TTS 后多久检测播放（秒）</label><input type="number" id="checkTTSStatusAfter"></div>
+        <div><label>播放状态检测间隔（毫秒）</label><input type="number" id="checkInterval"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>其他</h3>
+      <div class="grid">
+        <div class="row"><input type="checkbox" id="debug"><label for="debug" style="margin:0;font-size:13px;color:var(--text)">debug 调试日志</label></div>
+        <div class="row"><input type="checkbox" id="enableTrace"><label for="enableTrace" style="margin:0;font-size:13px;color:var(--text)">enableTrace（查设备 did 用）</label></div>
+        <div><label>网络超时（毫秒）</label><input type="number" id="timeout"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 大模型 -->
+  <section class="page" id="page-llm">
+    <div class="card">
+      <h3>大模型接口（写入 .env）</h3>
+      <div class="grid">
+        <div><label>OPENAI_MODEL 模型名</label><input type="text" id="OPENAI_MODEL" placeholder="glm-4-flash"><div class="hint">注意大小写敏感，智谱需全小写 glm-4-flash</div></div>
+        <div><label>OPENAI_API_KEY 密钥</label><input type="text" id="OPENAI_API_KEY" placeholder="sk-xxx / 智谱 key"></div>
+        <div><label>OPENAI_BASE_URL 接口地址</label><input type="text" id="OPENAI_BASE_URL" placeholder="https://open.bigmodel.cn/api/paas/v4"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>其他环境变量</h3>
+      <div class="hint" style="margin-bottom:6px">每行一个 KEY=VALUE，可写 TTS_BASE_URL、AUDIO_BEEP、QWEN_ENABLE_SEARCH 等</div>
+      <textarea id="envOthers" rows="8" placeholder="# TTS_BASE_URL=http://192.168.6.x:4321/xxxx/api"></textarea>
+    </div>
+  </section>
+
+  <!-- 高级 -->
+  <section class="page" id="page-adv">
+    <div class="card">
+      <h3>配置模式</h3>
+      <div id="modeNote" class="mono-note" style="margin-bottom:10px"></div>
+      <div class="row">
+        <button id="btnToStruct">接管为结构化模式（用表单管理 .migpt.js）</button>
+        <button id="btnBackup">下载当前 .migpt.js 内容到下方</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>.migpt.js 原文（编辑并保存后即切换到「自定义模式」）</h3>
+      <textarea id="rawJs" rows="16"></textarea>
+    </div>
+    <div class="card">
+      <h3>.env 全文</h3>
+      <textarea id="rawEnv" rows="10"></textarea>
+      <div class="hint">与「大模型」页共用同一份 .env，保存时以本页全文为准（若本页留空则不改动）</div>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="page" id="page-log">
+    <div class="card">
+      <h3>运行日志 <span class="hint" style="float:right">每 5 秒自动刷新</span></h3>
+      <div class="row" style="margin-bottom:10px">
+        <button id="btnRefreshLog">立即刷新</button>
+        <button id="btnClearLog" class="danger">清空日志</button>
+        <label style="margin:0 0 0 8px">显示行数</label>
+        <select id="logLines" style="width:100px">
+          <option value="100">100</option>
+          <option value="300" selected>300</option>
+          <option value="1000">1000</option>
+        </select>
+      </div>
+      <pre class="log" id="logBox">加载中…</pre>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let STATE = { managed: true, config: {}, raw: "", env: "" };
+let advMode = "struct";
+let lastEnvSaved = null;
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function arrToStr(v) { return Array.isArray(v) ? v.join(",") : (v == null ? "" : String(v)); }
+function strToArr(s, numeric) {
+  const parts = String(s || "").split(/[,，]/).map(x => x.trim()).filter(Boolean);
+  return numeric ? parts.map(Number).filter(n => !isNaN(n)) : parts;
+}
+
+function fillForm() {
+  const c = STATE.config || {};
+  const b = c.bot || {}, m = c.master || {}, s = c.speaker || {};
+  $("botName").value = b.name || "";
+  $("botProfile").value = b.profile || "";
+  $("masterName").value = m.name || "";
+  $("masterProfile").value = m.profile || "";
+  $("systemTemplate").value = c.systemTemplate || "";
+  $("userId").value = s.userId || "";
+  $("password").value = s.password || "";
+  $("did").value = s.did || "";
+  $("passToken").value = s.passToken || "";
+  $("callAIKeywords").value = arrToStr(s.callAIKeywords);
+  $("wakeUpKeywords").value = arrToStr(s.wakeUpKeywords);
+  $("exitKeywords").value = arrToStr(s.exitKeywords);
+  $("onEnterAI").value = arrToStr(s.onEnterAI);
+  $("onExitAI").value = arrToStr(s.onExitAI);
+  $("onAIAsking").value = arrToStr(s.onAIAsking);
+  $("onAIReplied").value = arrToStr(s.onAIReplied);
+  $("onAIError").value = arrToStr(s.onAIError);
+  $("ttsCommand").value = arrToStr(s.ttsCommand);
+  $("wakeUpCommand").value = arrToStr(s.wakeUpCommand);
+  $("playingCommand").value = arrToStr(s.playingCommand);
+  $("tts").value = s.tts || "xiaoai";
+  $("switchSpeakerKeywords").value = arrToStr(s.switchSpeakerKeywords);
+  $("streamResponse").checked = !!s.streamResponse;
+  $("exitKeepAliveAfter").value = s.exitKeepAliveAfter ?? 30;
+  $("checkTTSStatusAfter").value = s.checkTTSStatusAfter ?? 3;
+  $("checkInterval").value = s.checkInterval ?? 1000;
+  $("debug").checked = !!s.debug;
+  $("enableTrace").checked = !!s.enableTrace;
+  $("timeout").value = s.timeout ?? 5000;
+  $("rawJs").value = STATE.raw || "";
+  $("rawEnv").value = STATE.env || "";
+  applyEnvToForm(STATE.env || "");
+  setModeNote();
+  renderMiJsonState();
+}
+
+function renderMiJsonState() {
+  const el = $("miJsonState");
+  if (!el) return;
+  const mi = STATE.mi || {};
+  if (mi.hasToken) {
+    el.textContent = `/app/.mi.json 已就绪 · ${mi.masked}${mi.complete ? " · mina+miiot 均已写入" : " · 仅有单边，已自动补齐"}`
+      + (mi.persisted ? " · 已持久化到 /app/config" : "");
+    el.style.color = "var(--ok)";
+  } else {
+    el.textContent = "尚未写入 /app/.mi.json —— 填好上面的 passToken 再点保存即自动生成";
+    el.style.color = "var(--warn)";
+  }
+}
+
+function applyEnvToForm(envText) {
+  const keys = ["OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_BASE_URL"];
+  const map = {}; const others = [];
+  (envText || "").split("\n").forEach((line) => {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) { if (t) others.push(t); return; }
+    const i = t.indexOf("=");
+    if (i < 0) { others.push(t); return; }
+    const k = t.slice(0, i).trim();
+    if (keys.includes(k)) map[k] = t.slice(i + 1);
+    else others.push(t);
+  });
+  keys.forEach(k => { const el = $(k); if (el) el.value = map[k] || ""; });
+  $("envOthers").value = others.join("\n");
+  lastEnvSaved = envText || "";
+}
+
+function collectEnv() {
+  const lines = [];
+  const model = $("OPENAI_MODEL").value.trim();
+  const key = $("OPENAI_API_KEY").value.trim();
+  const base = $("OPENAI_BASE_URL").value.trim();
+  if (model) lines.push("OPENAI_MODEL=" + model);
+  if (key) lines.push("OPENAI_API_KEY=" + key);
+  if (base) lines.push("OPENAI_BASE_URL=" + base);
+  const others = $("envOthers").value.trim();
+  if (others) lines.push(others);
+  return lines.join("\n") + "\n";
+}
+
+function setModeNote() {
+  const el = $("modeNote");
+  if (STATE.managed) {
+    el.textContent = "当前：结构化模式（表单直接编辑，配置写入 config/migpt.json，.migpt.js 由控制台自动生成）";
+    el.style.color = "var(--muted)";
+  } else {
+    el.textContent = "当前：自定义模式（.migpt.js 已被手工编辑，表单只读，请在下方原文里修改）";
+    el.style.color = "var(--warn)";
+  }
+}
+
+function collectConfig() {
+  const speaker = {
+      userId: $("userId").value.trim(),
+      password: $("password").value.trim(),
+      did: $("did").value.trim(),
+      callAIKeywords: strToArr($("callAIKeywords").value),
+      wakeUpKeywords: strToArr($("wakeUpKeywords").value),
+      exitKeywords: strToArr($("exitKeywords").value),
+      onEnterAI: strToArr($("onEnterAI").value),
+      onExitAI: strToArr($("onExitAI").value),
+      onAIAsking: strToArr($("onAIAsking").value),
+      onAIReplied: strToArr($("onAIReplied").value),
+      onAIError: strToArr($("onAIError").value),
+      ttsCommand: strToArr($("ttsCommand").value, true),
+      wakeUpCommand: strToArr($("wakeUpCommand").value, true),
+      tts: $("tts").value.trim() || "xiaoai",
+      streamResponse: $("streamResponse").checked,
+      exitKeepAliveAfter: Number($("exitKeepAliveAfter").value) || 30,
+      checkTTSStatusAfter: Number($("checkTTSStatusAfter").value) || 3,
+      checkInterval: Number($("checkInterval").value) || 1000,
+      debug: $("debug").checked,
+      enableTrace: $("enableTrace").checked,
+      timeout: Number($("timeout").value) || 5000,
+  };
+  // 可选字段留空就不要写进 JSON —— 空数组 [] 是 truthy，
+  // 会让 BaseSpeaker 以为配了 playingCommand/switchSpeakerKeywords 从而走错误的分支
+  const playingCommand = strToArr($("playingCommand").value, true);
+  if (playingCommand.length) speaker.playingCommand = playingCommand;
+  const switchSpeakerKeywords = strToArr($("switchSpeakerKeywords").value);
+  if (switchSpeakerKeywords.length) speaker.switchSpeakerKeywords = switchSpeakerKeywords;
+  const passToken = $("passToken").value.trim();
+  if (passToken) speaker.passToken = passToken;
+  return {
+    systemTemplate: $("systemTemplate").value,
+    bot: { name: $("botName").value.trim(), profile: $("botProfile").value },
+    master: { name: $("masterName").value.trim(), profile: $("masterProfile").value },
+    speaker,
+  };
+}
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+async function loadConfig() {
+  STATE = await api("/api/config");
+  fillForm();
+}
+
+// MiGPT 只在进程启动时读一次 .migpt.js，之后每次对话还会拿这份旧配置反写数据库。
+// 所以保存后必须重启才能让角色 / 提示词生效 —— 这里自动处理掉。
+async function save(autoRestart = true) {
+  const envFullNote = $("rawEnv").value;
+  let wasRunning = false;
+  if (autoRestart) {
+    wasRunning = await api("/api/status").then((s) => !!s.running).catch(() => false);
+  }
+  const body = {
+    mode: document.querySelector('.tab[data-tab="adv"]') && advMode === "raw" ? "raw" : "struct",
+    config: collectConfig(),
+    env: (advMode === "raw" && envFullNote.trim()) ? envFullNote : collectEnv(),
+  };
+  if (advMode === "raw") body.raw = $("rawJs").value;
+  body.miPassToken = $("passToken").value.trim(); // 空串 = 清除 .mi.json 里的 passToken
+  const r = await api("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const saved = r.msg || "已保存";
+  if (wasRunning) {
+    await api("/api/restart", { method: "POST" }).catch(() => {});
+    toast(saved + "；MiGPT 已自动重启，新配置立即生效");
+  } else {
+    toast(saved);
+  }
+  await loadConfig();
+  loadStatus();
+  if (document.getElementById("page-log").classList.contains("active")) loadLog();
+}
+
+async function loadStatus() {
+  const s = await api("/api/status");
+  $("dot").className = "dot" + (s.running ? " on" : "");
+  $("statusText").textContent = s.running
+    ? `运行中 · pid ${s.pid} · ${s.uptime}s`
+    : "未运行 · 控制台端口 " + s.port + (s.authEnabled ? " · 已启用认证" : "");
+}
+
+async function loadLog() {
+  const n = $("logLines").value;
+  const r = await api("/api/logs?lines=" + n);
+  const box = $("logBox");
+  box.textContent = r.log || "（暂无日志）";
+  box.scrollTop = box.scrollHeight;
+}
+
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
+    btn.classList.add("active");
+    $("page-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "log") loadLog();
+  });
+});
+
+$("btnSave").onclick = () => save().catch(e => toast("保存失败: " + e.message));
+$("btnStart").onclick = async () => {
+  await save(false).catch(() => {});
+  toast((await api("/api/start", { method: "POST" })).msg);
+  loadStatus(); setTimeout(loadLog, 1500);
+};
+$("btnStop").onclick = async () => {
+  toast((await api("/api/stop", { method: "POST" })).msg);
+  loadStatus();
+};
+$("btnRestart").onclick = async () => {
+  await save(false).catch(() => {});
+  toast((await api("/api/restart", { method: "POST" })).msg);
+  loadStatus(); setTimeout(loadLog, 2000);
+};
+$("btnPresetL05C").onclick = () => {
+  $("ttsCommand").value = "5,3";
+  $("wakeUpCommand").value = "5,1";
+  $("playingCommand").value = "";
+  toast("已填入 L05C 指令：TTS=5,3 / 唤醒=5,1 —— 点『保存配置』生效");
+};
+$("btnPresetDefault").onclick = () => {
+  $("ttsCommand").value = "5,1";
+  $("wakeUpCommand").value = "5,3";
+  $("playingCommand").value = "";
+  toast("已恢复 mi-gpt 默认：TTS=5,1 / 唤醒=5,3 —— 点『保存配置』生效");
+};
+$("btnRefreshLog").onclick = loadLog;
+$("btnClearLog").onclick = async () => {
+  toast((await api("/api/logs/clear", { method: "POST" })).msg);
+  loadLog();
+};
+$("btnToStruct").onclick = () => { advMode = "struct"; toast("下次保存将用表单结构化配置覆盖 .migpt.js"); };
+$("btnBackup").onclick = async () => {
+  const st = await api("/api/config");
+  $("rawJs").value = st.raw;
+  $("rawEnv").value = st.env;
+  advMode = "raw";
+  toast("已载入原文到编辑框，改完点『保存配置』即生效");
+};
+
+loadConfig().catch(e => toast("加载配置失败: " + e.message));
+loadStatus();
+setInterval(() => { loadStatus(); }, 5000);
+setInterval(() => { if ($("page-log").classList.contains("active")) loadLog(); }, 5000);
+</script>
+</body>
+</html>
