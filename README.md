@@ -20,6 +20,45 @@
 
 <video src='https://github.com/idootop/mi-gpt/assets/35302658/dc336916-9087-418b-bc1b-04d5534dce8f'></video>
 
+> [!NOTE]
+> **本仓库为修改版（V1.9.9 初始修改版）**：基于 [idootop/mi-gpt](https://github.com/idootop/mi-gpt) 二次修改，在原项目基础上新增 **Web 控制台（WebUI）** 与 **ARM32v7（玩客云 / armv7l）构建支持** 等能力。下文为本次更新新增与修复的内容。
+
+## 🆕 V1.9.9 更新内容
+
+### ✨ 新增功能
+
+#### 1. Web 控制台（WebUI）
+内置一个**零依赖**（仅使用 Node.js 内置模块）的 Web 管理界面，默认监听 `6060` 端口（可用环境变量 `MIGPT_UI_PORT` 覆盖）。容器启动后访问 `http://<设备IP>:6060` 即可打开控制台。主要能力：
+
+- **进程管理**：在网页上一键 **启动 / 停止 / 重启** MiGPT 主进程，实时查看运行状态、PID 与运行时长；设置 `MIGPT_AUTOSTART=1` 可在控制台就绪后自动拉起 MiGPT。
+- **配置管理**：
+  - 结构化模式：通过表单 / JSON 编辑 `bot`、`master`、`speaker` 等配置；
+  - 高级模式：直接编辑 `.migpt.js` 与 `.env`（支持 OpenAI、智谱 GLM、通义千问、MoonShot、DeepSeek 等兼容 OpenAI 的模型）。
+- **米家登录态（passToken）管理**：可视化写入 / 清除 `.mi.json` 中的 `passToken`，实现**免密登录、跳过风控**；passToken 在界面中自动脱敏展示，并持久化到挂载卷（容器重建不丢失）。
+- **日志查看**：网页内实时查看 / 清空 MiGPT 运行日志（最多 1000 行）。
+- **可选 Basic Auth**：设置 `WEB_AUTH_USER` / `WEB_AUTH_PASS` 即可为控制台开启访问保护。
+
+#### 2. ARM32v7（玩客云 / armv7l）构建支持
+- 新增 `Dockerfile.arm`：基于 `debian:bookworm`，从内置的 `node-v20.14.0-linux-armv7l.tar.xz` 解包 Node 20，完成 pnpm 安装、Prisma 生成与 `tsup` 打包，并拷贝 `webui` 与 `entrypoint.sh`，容器入口即为 Web 控制台。
+- 新增 `entrypoint.sh`：容器入口脚本，负责创建 `config` / `logs` 目录、兜底生成 `.migpt.js`、按 `MIGPT_AUTOSTART` 决定是否自启 MiGPT，最后启动 Web 控制台（`node /app/webui/server.js`）。
+- `.dockerignore` 增加构建产物白名单、`Dockerfile` 增加 `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1` 以适配 ARM 环境。
+
+### 🐛 修复与适配
+- 修复 ARM 环境下 Prisma 引擎校验失败（checksum missing）导致无法启动的问题：跳过缺失引擎的校验和。
+- 修复 ARM 设备（如玩客云）无官方 amd64/arm64 镜像、无法直接 `docker run idootop/mi-gpt` 的问题，提供专用 ARM 构建链路。
+- 修复米家登录频繁触发异地风控、需反复验证码的问题：通过 WebUI 写入 `passToken` 实现免密登录。
+
+### 📦 本次新增文件
+```
+webui/
+  server.js        # 零依赖 Web 控制台服务端
+  index.html       # 控制台前端页面
+  autostart.js     # 可选：容器启动后自动拉起 MiGPT 主进程
+Dockerfile.arm     # ARM32v7 构建文件
+entrypoint.sh      # 容器入口（启动 Web 控制台 / 可选自启 MiGPT）
+node-v20.14.0-linux-armv7l.tar.xz  # ARM 构建内置 Node 20 二进制
+```
+
 ## 👋 项目简介
 
 在这个数字化的世界里，家已不仅仅是一个居住的地方，而是我们数字生活的延伸。
